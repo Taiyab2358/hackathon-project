@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Chat with Qwen</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #f9fafb; }
+    .chat-container {
+      max-width: 700px;
+      margin: 2rem auto;
+      background: white;
+      border-radius: 1rem;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
+      height: 80vh;
+    }
+    .messages {
+      flex: 1;
+      padding: 1rem;
+      overflow-y: auto;
+    }
+    .message {
+      margin-bottom: 1rem;
+      max-width: 70%;
+      padding: 0.6rem 1rem;
+      border-radius: 0.8rem;
+      word-wrap: break-word;
+    }
+    .user {
+      background: #2563eb;
+      color: white;
+      margin-left: auto;
+      border-bottom-right-radius: 0;
+    }
+    .bot {
+      background: #e5e7eb;
+      margin-right: auto;
+      border-bottom-left-radius: 0;
+    }
+    .input-container {
+      display: flex;
+      padding: 1rem;
+      border-top: 1px solid #ddd;
+    }
+    input {
+      flex: 1;
+      padding: 0.6rem;
+      border: 1px solid #ccc;
+      border-radius: 0.5rem;
+      margin-right: 0.5rem;
+    }
+    button {
+      padding: 0.6rem 1rem;
+      border-radius: 0.5rem;
+      background: #2563eb;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #1e40af;
+    }
+  </style>
+</head>
+<body>
+  <div class="chat-container">
+    <div id="messages" class="messages"></div>
+
+    <div class="input-container">
+      <input id="userInput" type="text" placeholder="Type your message..." />
+      <button onclick="sendMessage()">Send</button>
+      <button onclick="resetChat()" class="ml-2 bg-red-500 hover:bg-red-600">Reset</button>
+    </div>
+  </div>
+
+  <script>
+    const messagesDiv = document.getElementById("messages");
+
+    function addMessage(text, sender) {
+      const msg = document.createElement("div");
+      msg.className = "message " + sender;
+      msg.innerText = text;
+      messagesDiv.appendChild(msg);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    async function sendMessage() {
+      const input = document.getElementById("userInput");
+      const text = input.value.trim();
+      if (!text) return;
+
+      addMessage(text, "user");
+      input.value = "";
+
+      // Create a placeholder for streaming bot response
+      const botMsg = document.createElement("div");
+      botMsg.className = "message bot";
+      botMsg.innerText = "…";
+      messagesDiv.appendChild(botMsg);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+      const response = await fetch("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text })
+      });
+
+      if (!response.body) {
+        botMsg.innerText = "Error: No response from server.";
+        return;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let fullText = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        chunk.split("\n").forEach(line => {
+          if (line.startsWith("data:")) {
+            const content = line.replace("data:", "").trim();
+            if (content) {
+              fullText += content + " ";
+              botMsg.innerText = fullText;
+              messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
+          }
+        });
+      }
+    }
+
+    async function resetChat() {
+      await fetch("/reset", { method: "POST" });
+      messagesDiv.innerHTML = "";
+      addMessage("Chat reset.", "bot");
+    }
+  </script>
+</body>
+</html>
